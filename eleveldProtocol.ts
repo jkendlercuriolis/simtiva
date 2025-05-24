@@ -102,7 +102,7 @@ function eleveldParameters(p: Params) {
     return { vc, v2, v3, k10, k12, k13, k21, k31, ke0, cl1 };
 }
 
-export function eleveldProtocol(params: Params): DosingStep[] {
+export function generateEleveldDosingProtocol(params: Params): DosingStep[] {
     const intervalSec = params.intervalSec ?? 10;
     const p = eleveldParameters(params);
     const maxRateMgMin = params.concentrationMgPerMl * 1000 / 60;
