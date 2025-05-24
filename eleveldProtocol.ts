@@ -17,7 +17,7 @@ interface Params {
     heightCm: number;
     targetCe: number; // mcg/mL for propofol, mcg/mL for remifentanil
     intervalSec?: number; // simulation interval
-    volumeMl: number; // total infusion volume for maintenance
+    totalDose: number; // total maintenance dose (mg)
     currentCe?: number; // starting effect-site concentration
     loadingDoseMg?: number; // optional bolus amount
     loadingDurationSec?: number; // optional bolus duration
@@ -113,7 +113,7 @@ export function generateEleveldDosingProtocol(params: Params): DosingStep[] {
     const loadingDurationSec = params.loadingDurationSec ?? ld.durationSec;
     const loadingRateMgMin = loadingDurationSec > 0 ? loadingDoseMg / (loadingDurationSec / 60) : 0;
 
-    const totalMaintDoseMg = params.volumeMl * params.concentrationMgPerMl;
+    const totalMaintDoseMg = params.totalDose;
 
     const steps: DosingStep[] = [];
 
@@ -128,7 +128,7 @@ export function generateEleveldDosingProtocol(params: Params): DosingStep[] {
     // push initial state
     steps.push({
         time: 0,
-        rate: (loadingRateMgMin / params.weightKg) * 1000,
+        rate: (Math.min(loadingRateMgMin, maxRateMgMin) / params.weightKg) * 1000,
         ce: Ce,
         cumulativeDoseMg: 0,
         phase: 'loading'
@@ -136,22 +136,22 @@ export function generateEleveldDosingProtocol(params: Params): DosingStep[] {
 
     while (true) {
         const phase = t < loadingDurationSec ? 'loading' : 'maintenance';
+        const dtMin = intervalSec / 60;
         let rateMgMin: number;
 
         if (t < loadingDurationSec) {
             rateMgMin = Math.min(loadingRateMgMin, maxRateMgMin);
         } else if (infused < totalMaintDoseMg) {
-            let desired = cl1 * params.targetCe + ke0 * vc * (params.targetCe - Ce);
+            const cpTarget = Math.max(0, params.targetCe + (params.targetCe - Ce));
+            let desired = vc * ((cpTarget - C1) / dtMin + (k10 + k12 + k13 + ke0) * cpTarget - k21 * C2 - k31 * C3);
             desired = Math.max(0, Math.min(maxRateMgMin, desired));
             const remain = totalMaintDoseMg - infused;
-            const maxForInterval = remain / (intervalSec / 60);
+            const maxForInterval = remain / dtMin;
             rateMgMin = Math.min(desired, maxForInterval);
-            infused += rateMgMin * (intervalSec / 60);
+            infused += rateMgMin * dtMin;
         } else {
             rateMgMin = 0;
         }
-
-        const dtMin = intervalSec / 60;
         const dC1 = (rateMgMin / vc) - (k10 + k12 + k13 + ke0) * C1 + k21 * C2 + k31 * C3;
         const dC2 = k12 * C1 - k21 * C2;
         const dC3 = k13 * C1 - k31 * C3;
